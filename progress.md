@@ -10,6 +10,33 @@ This file tracks implementation progress, small code adjustments, and functional
 - Added `services/nova-cortex.service` as a basic service placeholder.
 - Added `.gitignore` for Python build artifacts and runtime data.
 
+### Stage 2: Runtime Core
+- Added the async Cortex bootstrap in `nova-cortex/nova/core/event_loop.py`.
+- Added the Unix socket IPC server in `nova-cortex/nova/core/ipc_server.py`.
+- Added shared runtime state tracking in `nova-cortex/nova/core/state.py`.
+- Confirmed the runtime boots and responds with wake/status messages.
+
+### Stage 3: Tool Routing and System Awareness
+- Added `nova-cortex/nova/tools/registry.py` and `nova-cortex/nova/tools/file_ops.py` for basic tool dispatch.
+- Added `nova-cortex/nova/core/platform.py` to detect distro metadata.
+- Hardened path handling so tool calls stay inside the workspace boundary.
+- Added `status` and `system_info` routes for runtime and distro visibility.
+
+### Stage 4: Config and Diagnostics
+- Added `nova-cortex/nova/core/config.py` to load `.env` values into structured config.
+- Added `nova-cortex/nova/llm/prompts.py`, `nova-cortex/nova/llm/schema.py`, and `nova-cortex/nova/llm/engine.py` for prompt, tool-call, and backend diagnostics support.
+- Added `nova-cortex/nova/core/report.py` plus `runtime_report`, `config_status`, `llm_status`, and `llm_request_preview` IPC commands.
+- Added `nova-cortex/nova/llm/client.py` to define the next-stage request payload shape.
+- Verified the runtime and diagnostics paths with compile-time checks and IPC probes.
+
+### Stage 5: Backend Bridge
+- Extended `nova-cortex/nova/llm/client.py` with guarded execution methods for `ollama` and `llama.cpp`.
+- Added `llm_execute_preview` so the runtime can exercise the real backend command shape without changing the rest of the router.
+- Kept the execution path failure-safe so missing binaries return clear availability errors instead of crashing the runtime.
+- Left the request and execution payload shapes stable so future model integration can build on them.
+- Added missing-binary and timeout handling so the backend bridge fails cleanly when `ollama` or `llama-cli` are unavailable.
+- Validated the bridge with `python3 -m compileall nova` and an IPC probe that returned `response:provider=ollama ... state=unavailable output=ollama_missing`.
+
 ### Micro Adjustments
 - Replaced the print-only entrypoint in `nova-cortex/nova/main.py` with an async startup path.
 - Added `nova-cortex/nova/core/event_loop.py` to hold the main Cortex runtime loop.
@@ -55,6 +82,19 @@ This file tracks implementation progress, small code adjustments, and functional
 - Wired the loaded config into the Cortex startup path and exposed a `config_status` tool response for runtime inspection.
 - Fixed the config loader so missing `.env` keys now fall back to literal defaults instead of dataclass member objects.
 - Revalidated the config layer with `python3 -m compileall nova` and an IPC probe that returned the corrected `config:provider=llama.cpp ... embedding=nomic-embed-text` output.
+- Added `nova-cortex/nova/llm/engine.py` as a lightweight backend diagnostics layer for the selected LLM provider.
+- Wired LLM status reporting into the Cortex startup path and added an `llm_status` IPC tool response.
+- Validated the stage with `python3 -m compileall nova` and IPC probes that returned both `config_status` and `llm_status` responses.
+- Confirmed the LLM diagnostics layer correctly reports backend availability as `unavailable` when no matching local binary is present.
+- Fixed an actual router bug by restoring the missing `json` import used during tool-call parsing error handling.
+- Added `nova-cortex/nova/core/report.py` and a `runtime_report` IPC command that combines state, system, config, LLM, and prompt output into one summary.
+- Flattened the IPC runtime report into a single line so simple socket reads return the full summary reliably.
+- Corrected the Cortex event loop after the report refactor and removed the stale prompt import.
+- Fixed an indentation bug in the `runtime_report` branch of the tool router that was introduced during the report flattening pass.
+- Added `nova-cortex/nova/llm/client.py` as a lightweight LLM request adapter for future execution stages.
+- Exposed `llm_request_preview` so the runtime can show the exact provider/model/prompt payload shape before any actual model execution is added.
+- Added a guarded backend execution bridge so the configured provider can be contacted later without changing the request shape again.
+- Added `llm_execute_preview` to show the backend execution path and output or error state in a controlled preview form.
 
 ### Notes
 - The current implementation is still a scaffold. It now boots a minimal async runtime and accepts local socket triggers, but it does not yet load an LLM, STT/TTS, or tool router.

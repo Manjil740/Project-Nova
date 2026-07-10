@@ -6,6 +6,8 @@ from pathlib import Path
 from nova.core.config import NovaConfig
 from nova.core.state import CortexState
 from nova.core.platform import SystemProfile
+from nova.llm.engine import LLMEngine
+from nova.llm.client import LLMClient
 from nova.tools.registry import ToolRouter
 
 
@@ -17,6 +19,8 @@ class IpcServer:
         state: CortexState | None = None,
         system_profile: SystemProfile | None = None,
         config: NovaConfig | None = None,
+        llm_engine: LLMEngine | None = None,
+        llm_client: LLMClient | None = None,
     ) -> None:
         self.socket_path = socket_path
         self._server: asyncio.AbstractServer | None = None
@@ -25,6 +29,8 @@ class IpcServer:
             state=state,
             system_profile=system_profile,
             config=config,
+            llm_engine=llm_engine,
+            llm_client=llm_client,
         )
 
     async def start(self) -> None:

@@ -1,11 +1,15 @@
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from pathlib import Path
 
+from nova.core.config import NovaConfig
 from nova.core.state import CortexState
 from nova.core.platform import SystemProfile
-from nova.core.config import NovaConfig
+from nova.core.report import RuntimeReport
+from nova.llm.engine import LLMEngine
+from nova.llm.client import LLMClient
 from nova.llm.prompts import build_system_prompt
 from nova.llm.schema import ToolCall
 from nova.tools.file_ops import list_directory, read_file
@@ -17,6 +21,8 @@ class ToolRouter:
     state: CortexState | None = None
     system_profile: SystemProfile | None = None
     config: NovaConfig | None = None
+    llm_engine: LLMEngine | None = None
+    llm_client: LLMClient | None = None
 
     def dispatch(self, message: str) -> str:
         tool_call = self._parse(message)
@@ -45,6 +51,32 @@ class ToolRouter:
             if self.config is not None:
                 return self.config.render() + "\n"
             return "config:unavailable\n"
+
+        if command == "llm_status":
+            if self.llm_engine is not None:
+                return self.llm_engine.render_status() + "\n"
+            return "llm:unavailable\n"
+
+        if command == "llm_request_preview":
+            if self.llm_client is not None:
+                prompt = argument or build_system_prompt(self.state, self.system_profile)
+                return self.llm_client.render_preview(prompt) + "\n"
+            return "llm_request:unavailable\n"
+
+        if command == "llm_execute_preview":
+            if self.llm_client is not None:
+                prompt = argument or build_system_prompt(self.state, self.system_profile)
+                return self.llm_client.render_execution_preview(prompt) + "\n"
+            return "llm_execute:unavailable\n"
+
+        if command == "runtime_report":
+            report = RuntimeReport(
+                state=self.state,
+                system_profile=self.system_profile,
+                config=self.config,
+                llm_engine=self.llm_engine,
+            )
+            return report.render().replace("\n", " | ") + "\n"
 
         if command == "list_directory":
             target = self._resolve(argument)

@@ -7,7 +7,10 @@ from pathlib import Path
 from nova.core.config import NovaConfig
 from nova.core.ipc_server import IpcServer
 from nova.core.platform import SystemProfile
+from nova.core.report import RuntimeReport
 from nova.core.state import CortexState
+from nova.llm.engine import LLMEngine
+from nova.llm.client import LLMClient
 from nova.llm.prompts import build_system_prompt
 
 
@@ -21,13 +24,15 @@ class CortexApp:
     async def run(self) -> None:
         self.socket_path.parent.mkdir(parents=True, exist_ok=True)
         config = NovaConfig.load(self.project_root)
+        llm_engine = LLMEngine(config)
+        llm_client = LLMClient(config)
         state = CortexState()
         system_profile = SystemProfile.detect()
-        server = IpcServer(self.socket_path, self.project_root, state, system_profile, config)
+        server = IpcServer(self.socket_path, self.project_root, state, system_profile, config, llm_engine, llm_client)
         await server.start()
         print(f"IPC listener active at {self.socket_path}")
-        print(build_system_prompt(state, system_profile))
-        print(config.render())
+        print(RuntimeReport(state=state, system_profile=system_profile, config=config, llm_engine=llm_engine).render())
+        print(llm_client.render_preview(build_system_prompt(state, system_profile)))
 
         try:
             await asyncio.Event().wait()
