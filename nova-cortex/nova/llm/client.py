@@ -5,6 +5,7 @@ from subprocess import TimeoutExpired
 from subprocess import PIPE, run
 
 from nova.core.config import NovaConfig
+from nova.llm.output import LLMOutputParser
 
 
 @dataclass(slots=True)
@@ -64,6 +65,10 @@ class LLMClient:
 
     def render_execution_preview(self, prompt: str) -> str:
         return self.execute(prompt).render()
+
+    def render_response_preview(self, raw_text: str) -> str:
+        parser = LLMOutputParser()
+        return parser.render_preview(raw_text)
 
     def _execute_ollama(self, request: LLMRequest) -> LLMResponse:
         try:

@@ -32,10 +32,19 @@ This file tracks implementation progress, small code adjustments, and functional
 ### Stage 5: Backend Bridge
 - Extended `nova-cortex/nova/llm/client.py` with guarded execution methods for `ollama` and `llama.cpp`.
 - Added `llm_execute_preview` so the runtime can exercise the real backend command shape without changing the rest of the router.
+- Added `llm_execute` so the runtime can call the guarded backend execution path directly when a supported local backend is present.
 - Kept the execution path failure-safe so missing binaries return clear availability errors instead of crashing the runtime.
 - Left the request and execution payload shapes stable so future model integration can build on them.
 - Added missing-binary and timeout handling so the backend bridge fails cleanly when `ollama` or `llama-cli` are unavailable.
 - Validated the bridge with `python3 -m compileall nova` and an IPC probe that returned `response:provider=ollama ... state=unavailable output=ollama_missing`.
+- Revalidated the direct execution command with `python3 -m compileall nova` and the same safe unavailable response from `llm_execute`.
+
+### Stage 6: Output Normalization
+- Added `nova-cortex/nova/llm/output.py` to normalize raw model text into a structured output object.
+- Added `llm_response_preview` so the runtime can parse sample backend output into plain text or a structured tool call.
+- Kept the parser tolerant of free-form text while still detecting JSON tool envelopes when present.
+- Prepared the runtime for the next stage where real backend output can be routed into tool execution decisions.
+- Validated the stage with `python3 -m compileall nova` and IPC probes that returned both a parsed JSON tool call and a plain-text normalized response.
 
 ### Micro Adjustments
 - Replaced the print-only entrypoint in `nova-cortex/nova/main.py` with an async startup path.
@@ -95,6 +104,7 @@ This file tracks implementation progress, small code adjustments, and functional
 - Exposed `llm_request_preview` so the runtime can show the exact provider/model/prompt payload shape before any actual model execution is added.
 - Added a guarded backend execution bridge so the configured provider can be contacted later without changing the request shape again.
 - Added `llm_execute_preview` to show the backend execution path and output or error state in a controlled preview form.
+- Added `nova-cortex/nova/llm/output.py` and `llm_response_preview` so backend text can be normalized into structured output.
 
 ### Notes
 - The current implementation is still a scaffold. It now boots a minimal async runtime and accepts local socket triggers, but it does not yet load an LLM, STT/TTS, or tool router.
@@ -108,3 +118,45 @@ Use this simple structure for future entries:
 - Why it changed
 - What was validated
 - Any follow-up needed
+
+## Remaining Stages
+
+The current codebase is stable for the scaffold, runtime, routing, config, diagnostics, and backend bridge layers. The remaining work is still substantial.
+
+### Stage 7: Real Model Integration
+- Implement a real response path for `ollama` and `llama.cpp` instead of only preview and availability reporting.
+- Convert backend output into structured tool decisions and normal assistant text.
+- Add streaming support if the chosen backend can provide incremental tokens.
+
+### Stage 8: Voice Pipeline
+- Add `nova-cortex/nova/audio/stt.py` for speech-to-text.
+- Add `nova-cortex/nova/audio/tts.py` for text-to-speech.
+- Connect microphone input, transcription, and spoken responses to the Cortex event loop.
+
+### Stage 9: Tool Expansion and Safety
+- Build out `nova-cortex/nova/tools/bash_executor.py` and `nova-cortex/nova/tools/web_search.py`.
+- Add `nova-cortex/nova/shield/classifier.py`, `nova-cortex/nova/shield/sandbox.py`, and `nova-cortex/nova/shield/consent.py`.
+- Add real risk-tier enforcement for destructive, networked, and system-modifying actions.
+
+### Stage 10: Memory and Learning
+- Add `nova-cortex/nova/memory/vector_db.py`, `nova-cortex/nova/memory/embeddings.py`, and `nova-cortex/nova/memory/habit_tracker.py`.
+- Store long-term preferences, habits, and relevant context in a local database.
+- Add retrieval so the runtime can inject memory into prompts automatically.
+
+### Stage 11: Packaging and System Integration
+- Add real `services/nova-sentinel.service` and `services/nova-cortex.service` behavior for boot-time use.
+- Add or finish `install.sh` branches for real backend installation paths.
+- Add `uninstall.sh`, tests, and any distro-specific package handling that is still missing.
+
+### What You Need To Do
+- Decide which backend to prioritize first for actual execution support: `ollama` or `llama.cpp`.
+- Test the current installer on your target Linux distro so package detection and `.env` creation match your system.
+- Install the chosen local backend and model so the next execution stage can run against a real binary.
+
+### What Is Still Missing In Code
+- Actual model inference output handling beyond preview and safe unavailable responses.
+- STT/TTS audio processing.
+- Tool execution beyond read-only and directory/file access.
+- Shielded command approval flow and sandboxing.
+- Memory persistence, vector retrieval, and habit tracking.
+- Service integration for real system startup and boot behavior.

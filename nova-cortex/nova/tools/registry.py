@@ -69,6 +69,23 @@ class ToolRouter:
                 return self.llm_client.render_execution_preview(prompt) + "\n"
             return "llm_execute:unavailable\n"
 
+        if command == "llm_execute":
+            if self.llm_client is not None:
+                prompt = argument or build_system_prompt(self.state, self.system_profile)
+                response = self.llm_client.execute(prompt)
+                if self.state is not None:
+                    self.state.record_event(command)
+                return response.render() + "\n"
+            return "llm_execute:unavailable\n"
+
+        if command == "llm_response_preview":
+            if self.llm_client is not None:
+                raw_text = argument or ""
+                if not raw_text:
+                    return "llm_response:missing_input\n"
+                return self.llm_client.render_response_preview(raw_text) + "\n"
+            return "llm_response:unavailable\n"
+
         if command == "runtime_report":
             report = RuntimeReport(
                 state=self.state,
