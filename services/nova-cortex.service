@@ -1,0 +1,14 @@
+[Unit]
+Description=Project Nova Cortex Service
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/Project-Nova/nova-cortex
+ExecStart=/usr/bin/python3 -m nova.main
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=default.target
