@@ -22,6 +22,17 @@ This file tracks implementation progress, small code adjustments, and functional
 - Updated the IPC server so socket messages dispatch to tools instead of only echoing acknowledgements.
 - Passed the project root into the IPC/tool layer so relative file operations resolve consistently from the Nova workspace.
 - Revalidated the package with `python3 -m compileall nova` and a socket round-trip that returned the project directory listing.
+- Added `nova-cortex/nova/core/state.py` to track runtime start time, event count, and last event.
+- Extended the tool router with a `status` command and event tracking for wake, list, and read actions.
+- Wired shared Cortex state through the event loop and IPC server so runtime status is queryable over the socket.
+- Removed an unused import from the tool router during the cleanup pass.
+- Validated the update with `python3 -m compileall nova` and a socket probe that returned a live `status:running` line.
+- Hardened `nova-cortex/nova/tools/registry.py` with `shlex` parsing so quoted arguments are handled more reliably.
+- Restricted tool path resolution to the workspace boundary so path traversal outside the project root is rejected.
+- Added `nova-cortex/nova/core/platform.py` to detect distro metadata from `/etc/os-release`.
+- Wired distro info into `status` and added a `system_info` command for multi-distro visibility.
+- Added error handling in the IPC server so invalid path requests return a structured error instead of crashing the listener.
+- Validated the hardening pass with `python3 -m compileall nova` and IPC probes that returned a distro report plus an expected `error:path_outside_workspace:/tmp` boundary rejection.
 
 ### Notes
 - The current implementation is still a scaffold. It now boots a minimal async runtime and accepts local socket triggers, but it does not yet load an LLM, STT/TTS, or tool router.

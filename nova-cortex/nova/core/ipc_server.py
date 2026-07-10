@@ -3,14 +3,22 @@ from __future__ import annotations
 import asyncio
 from pathlib import Path
 
+from nova.core.state import CortexState
+from nova.core.platform import SystemProfile
 from nova.tools.registry import ToolRouter
 
 
 class IpcServer:
-    def __init__(self, socket_path: Path, project_root: Path) -> None:
+    def __init__(
+        self,
+        socket_path: Path,
+        project_root: Path,
+        state: CortexState | None = None,
+        system_profile: SystemProfile | None = None,
+    ) -> None:
         self.socket_path = socket_path
         self._server: asyncio.AbstractServer | None = None
-        self._router = ToolRouter(project_root=project_root)
+        self._router = ToolRouter(project_root=project_root, state=state, system_profile=system_profile)
 
     async def start(self) -> None:
         if self.socket_path.exists():
@@ -39,7 +47,10 @@ class IpcServer:
     ) -> None:
         payload = await reader.readline()
         message = payload.decode("utf-8", errors="replace").strip()
-        response = self._router.dispatch(message)
+        try:
+            response = self._router.dispatch(message)
+        except ValueError as error:
+            response = f"error:{error}\n"
         writer.write(response.encode("utf-8"))
         await writer.drain()
         writer.close()

@@ -5,6 +5,8 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from nova.core.ipc_server import IpcServer
+from nova.core.platform import SystemProfile
+from nova.core.state import CortexState
 
 
 @dataclass(slots=True)
@@ -16,7 +18,9 @@ class CortexApp:
 
     async def run(self) -> None:
         self.socket_path.parent.mkdir(parents=True, exist_ok=True)
-        server = IpcServer(self.socket_path, self.project_root)
+        state = CortexState()
+        system_profile = SystemProfile.detect()
+        server = IpcServer(self.socket_path, self.project_root, state, system_profile)
         await server.start()
         print(f"IPC listener active at {self.socket_path}")
 
