@@ -1,11 +1,12 @@
 from __future__ import annotations
 
-import shlex
 from dataclasses import dataclass
 from pathlib import Path
 
 from nova.core.state import CortexState
 from nova.core.platform import SystemProfile
+from nova.llm.prompts import build_system_prompt
+from nova.llm.schema import ToolCall
 from nova.tools.file_ops import list_directory, read_file
 
 
@@ -16,7 +17,9 @@ class ToolRouter:
     system_profile: SystemProfile | None = None
 
     def dispatch(self, message: str) -> str:
-        command, argument = self._split(message)
+        tool_call = self._parse(message)
+        command = tool_call.tool
+        argument = tool_call.arguments.get("path", "")
 
         if command in {"", "wake", "ping"}:
             if self.state is not None:
@@ -33,6 +36,9 @@ class ToolRouter:
                 return self.system_profile.render() + "\n"
             return "system:unknown\n"
 
+        if command == "system_prompt":
+            return build_system_prompt(self.state, self.system_profile) + "\n"
+
         if command == "list_directory":
             target = self._resolve(argument)
             if self.state is not None:
@@ -47,18 +53,15 @@ class ToolRouter:
 
         return f"error:unknown_tool:{command}\n"
 
-    def _split(self, message: str) -> tuple[str, str]:
+    def _parse(self, message: str) -> ToolCall:
         try:
-            parts = shlex.split(message)
-        except ValueError:
-            return "", ""
+            return ToolCall.from_message(message)
+        except (ValueError, json.JSONDecodeError):
+            return ToolCall(tool="", arguments={})
 
-        if not parts:
-            return "", ""
-
-        command = parts[0].strip()
-        argument = " ".join(parts[1:]).strip() if len(parts) > 1 else ""
-        return command, argument
+    def _split(self, message: str) -> tuple[str, str]:
+        parsed = self._parse(message)
+        return parsed.tool, parsed.arguments.get("path", "")
 
     def _resolve(self, raw_path: str) -> Path:
         base_path = self.project_root or Path.cwd()

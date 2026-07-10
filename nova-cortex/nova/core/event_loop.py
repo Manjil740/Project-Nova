@@ -7,6 +7,7 @@ from pathlib import Path
 from nova.core.ipc_server import IpcServer
 from nova.core.platform import SystemProfile
 from nova.core.state import CortexState
+from nova.llm.prompts import build_system_prompt
 
 
 @dataclass(slots=True)
@@ -23,6 +24,7 @@ class CortexApp:
         server = IpcServer(self.socket_path, self.project_root, state, system_profile)
         await server.start()
         print(f"IPC listener active at {self.socket_path}")
+        print(build_system_prompt(state, system_profile))
 
         try:
             await asyncio.Event().wait()

@@ -224,6 +224,8 @@ A major challenge is ensuring Nova works on Kali, Ubuntu, Arch, and Fedora witho
 ### 7.1 Dependency Resolution Strategy
 The installer will read `/etc/os-release` to determine the `ID` and `ID_LIKE`.
 
+Before any model setup begins, the installer will also present a small interactive menu so the user can choose the LLM backend and the model source. The default path will prefer Ollama for the simplest offline-first flow, but the installer should also allow a local llama.cpp-style backend or a custom open-source model identifier when needed.
+
 ```bash
 # Pseudo-code for install.sh dependency resolution
 DISTRO_ID=$(grep ^ID= /etc/os-release | cut -d= -f2 | tr -d '"')

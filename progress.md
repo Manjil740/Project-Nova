@@ -33,6 +33,15 @@ This file tracks implementation progress, small code adjustments, and functional
 - Wired distro info into `status` and added a `system_info` command for multi-distro visibility.
 - Added error handling in the IPC server so invalid path requests return a structured error instead of crashing the listener.
 - Validated the hardening pass with `python3 -m compileall nova` and IPC probes that returned a distro report plus an expected `error:path_outside_workspace:/tmp` boundary rejection.
+- Added `nova-cortex/nova/llm/prompts.py` to generate a reusable system prompt from runtime state and detected distro info.
+- Added `nova-cortex/nova/llm/schema.py` to parse both plain-text and JSON tool envelopes into a structured `ToolCall`.
+- Updated the router to accept JSON tool messages, expose `system_prompt`, and feed the prompt builder into the startup path.
+- Kept the existing plain-text command path working so the router stays backward compatible while becoming more versatile.
+- Validated the new layer with `python3 -m compileall nova` and IPC probes that returned the generated system prompt, a JSON `list_directory` call, and a JSON `status` response with updated event tracking.
+- Updated [README.md](/home/manjil/Project-Nova/README.md) and [Project-Nova.md](/home/manjil/Project-Nova/Project-Nova.md) to describe a selectable LLM backend during setup.
+- Added [install.sh](/home/manjil/Project-Nova/install.sh) with distro detection plus interactive backend/model selection for Ollama, llama.cpp, or a custom choice.
+- Added setup output that writes the selected backend and model into `nova-cortex/.env`.
+- Validated the installer with `bash -n /home/manjil/Project-Nova/install.sh` and marked it executable for direct use.
 
 ### Notes
 - The current implementation is still a scaffold. It now boots a minimal async runtime and accepts local socket triggers, but it does not yet load an LLM, STT/TTS, or tool router.
