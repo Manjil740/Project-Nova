@@ -51,6 +51,10 @@ This file tracks implementation progress, small code adjustments, and functional
 - Hardened `install.sh` to tolerate unusual environments by falling back to package-manager detection instead of failing on unsupported `/etc/os-release` IDs.
 - Added a `NOVA_INSTALL_LIB_ONLY=1` mode so the installer can be sourced for validation without auto-running the full setup flow.
 - Validated the hardening with a source-mode probe that returned `distro=unknown manager=none backend=none model=none` instead of crashing on the environment ID.
+- Added `nova-cortex/nova/core/config.py` to load `.env` values into a structured Python config object.
+- Wired the loaded config into the Cortex startup path and exposed a `config_status` tool response for runtime inspection.
+- Fixed the config loader so missing `.env` keys now fall back to literal defaults instead of dataclass member objects.
+- Revalidated the config layer with `python3 -m compileall nova` and an IPC probe that returned the corrected `config:provider=llama.cpp ... embedding=nomic-embed-text` output.
 
 ### Notes
 - The current implementation is still a scaffold. It now boots a minimal async runtime and accepts local socket triggers, but it does not yet load an LLM, STT/TTS, or tool router.

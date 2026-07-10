@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 from pathlib import Path
 
+from nova.core.config import NovaConfig
 from nova.core.state import CortexState
 from nova.core.platform import SystemProfile
 from nova.tools.registry import ToolRouter
@@ -15,10 +16,16 @@ class IpcServer:
         project_root: Path,
         state: CortexState | None = None,
         system_profile: SystemProfile | None = None,
+        config: NovaConfig | None = None,
     ) -> None:
         self.socket_path = socket_path
         self._server: asyncio.AbstractServer | None = None
-        self._router = ToolRouter(project_root=project_root, state=state, system_profile=system_profile)
+        self._router = ToolRouter(
+            project_root=project_root,
+            state=state,
+            system_profile=system_profile,
+            config=config,
+        )
 
     async def start(self) -> None:
         if self.socket_path.exists():
