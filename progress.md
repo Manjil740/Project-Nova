@@ -42,6 +42,15 @@ This file tracks implementation progress, small code adjustments, and functional
 - Added [install.sh](/home/manjil/Project-Nova/install.sh) with distro detection plus interactive backend/model selection for Ollama, llama.cpp, or a custom choice.
 - Added setup output that writes the selected backend and model into `nova-cortex/.env`.
 - Validated the installer with `bash -n /home/manjil/Project-Nova/install.sh` and marked it executable for direct use.
+- Polished `install.sh` with a welcome banner, colored prompts, spinner-based progress messages, and a closing thank-you message.
+- Added `nova-cortex/.env.example` as a reusable template for Python-side configuration values.
+- Added `.env` to [.gitignore](/home/manjil/Project-Nova/.gitignore) so local setup secrets and machine-specific settings stay out of version control.
+- Enhanced `install.sh` to detect existing local LLM software and model installs, then ask whether to reuse the current setup or install a new one.
+- Expanded the setup menus so installed Ollama models can be reused directly when available, with fallback choices for custom or new model names.
+- Updated [README.md](/home/manjil/Project-Nova/README.md) so the setup section now documents reuse-vs-install behavior for existing local AI software.
+- Hardened `install.sh` to tolerate unusual environments by falling back to package-manager detection instead of failing on unsupported `/etc/os-release` IDs.
+- Added a `NOVA_INSTALL_LIB_ONLY=1` mode so the installer can be sourced for validation without auto-running the full setup flow.
+- Validated the hardening with a source-mode probe that returned `distro=unknown manager=none backend=none model=none` instead of crashing on the environment ID.
 
 ### Notes
 - The current implementation is still a scaffold. It now boots a minimal async runtime and accepts local socket triggers, but it does not yet load an LLM, STT/TTS, or tool router.

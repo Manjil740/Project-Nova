@@ -11,3 +11,4 @@ dist/
 build/
 *.egg-info/
 nova-cortex/data/
+**/.env

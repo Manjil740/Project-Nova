@@ -59,6 +59,7 @@ The `install.sh` script automatically:
 - ✅ Installs system dependencies (`apt`, `pacman`, or `dnf`)
 - ✅ Compiles the C/Rust Sentinel daemon for < 5MB RAM usage
 - ✅ Sets up the Python virtual environment for the Cortex
+- ✅ Checks for existing local LLM software and models, then lets you reuse them or install a new setup
 - ✅ Lets you choose the LLM backend during setup, including Ollama or a local llama.cpp-style path
 - ✅ Lets you choose an open-source model preset or enter a custom model name during setup
 - ✅ Registers and enables `nova-sentinel.service` via `systemd`
