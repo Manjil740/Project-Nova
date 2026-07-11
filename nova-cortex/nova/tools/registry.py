@@ -17,6 +17,25 @@ from nova.tools.file_ops import list_directory, read_file
 
 @dataclass(slots=True)
 class ToolRouter:
+    """Single entry point for IPC command dispatch.
+
+    Keep this class deterministic and side-effect-light so later agents can
+    safely add higher-risk tools (bash, network, system actions) behind the
+    same routing surface.
+
+        IPC command contract (current):
+        - Incoming payload is a single line from the Unix socket.
+        - Payload may be either plain text (`tool arg`) or JSON (`{"tool": ...}`).
+        - Every dispatch result must return one trailing newline so simple clients
+            can read responses with a single `readline()` call.
+
+        Extension guideline:
+        - Add new command branches in `dispatch()`.
+        - Prefer explicit `*_unavailable` responses over exceptions.
+        - Record state events only for meaningful runtime actions.
+        - Keep path-based operations routed through `_resolve()`.
+    """
+
     project_root: Path | None = None
     state: CortexState | None = None
     system_profile: SystemProfile | None = None
@@ -25,10 +44,12 @@ class ToolRouter:
     llm_client: LLMClient | None = None
 
     def dispatch(self, message: str) -> str:
+        # The socket protocol is line-based text. Parse once and route by name.
         tool_call = self._parse(message)
         command = tool_call.tool
         argument = tool_call.arguments.get("path", "")
 
+        # Liveness + lightweight status commands.
         if command in {"", "wake", "ping"}:
             if self.state is not None:
                 self.state.record_event(command or "wake")
@@ -57,6 +78,8 @@ class ToolRouter:
                 return self.llm_engine.render_status() + "\n"
             return "llm:unavailable\n"
 
+        # LLM bridge commands intentionally separate preview/execute/parse
+        # to keep debugging and future policy controls straightforward.
         if command == "llm_request_preview":
             if self.llm_client is not None:
                 prompt = argument or build_system_prompt(self.state, self.system_profile)
@@ -93,8 +116,10 @@ class ToolRouter:
                 config=self.config,
                 llm_engine=self.llm_engine,
             )
+            # Keep report single-line for simple one-read IPC clients.
             return report.render().replace("\n", " | ") + "\n"
 
+        # Workspace-bound read-only file helpers.
         if command == "list_directory":
             target = self._resolve(argument)
             if self.state is not None:
@@ -113,13 +138,18 @@ class ToolRouter:
         try:
             return ToolCall.from_message(message)
         except (ValueError, json.JSONDecodeError):
+            # Return an empty tool call instead of raising to keep the socket
+            # session stable on malformed payloads.
             return ToolCall(tool="", arguments={})
 
-    def _split(self, message: str) -> tuple[str, str]:
-        parsed = self._parse(message)
-        return parsed.tool, parsed.arguments.get("path", "")
-
     def _resolve(self, raw_path: str) -> Path:
+        """Resolve user-supplied paths while enforcing workspace boundaries.
+
+        This guard prevents accidental or malicious path traversal outside the
+        project root. Any command that takes a file path should route through
+        this method instead of directly joining raw strings.
+        """
+
         base_path = self.project_root or Path.cwd()
         if not raw_path:
             return base_path.resolve()

@@ -10,6 +10,12 @@ from nova.llm.output import LLMOutputParser
 
 @dataclass(slots=True)
 class LLMRequest:
+    """Normalized request envelope for all local backends.
+
+    Keep request fields backend-agnostic so upstream router code does not need
+    provider-specific branching.
+    """
+
     provider: str
     model: str
     base_url: str
@@ -25,6 +31,12 @@ class LLMRequest:
 
 @dataclass(slots=True)
 class LLMResponse:
+    """Lightweight response envelope returned to router commands.
+
+    `available=False` is used for both missing-runtime and execution failures
+    so callers can remain failure-safe without exception handling.
+    """
+
     provider: str
     model: str
     available: bool
@@ -39,6 +51,12 @@ class LLMResponse:
 
 @dataclass(slots=True)
 class LLMClient:
+    """Backend bridge for local model providers.
+
+    This layer is intentionally small so a future agent can replace command
+    execution with API clients/streaming without touching the router contract.
+    """
+
     config: NovaConfig
 
     def build_request(self, prompt: str) -> LLMRequest:
@@ -53,6 +71,8 @@ class LLMClient:
         return self.build_request(prompt).render()
 
     def execute(self, prompt: str) -> LLMResponse:
+        # This method is intentionally provider-switched in one place so future
+        # backends can be added without changing router command contracts.
         request = self.build_request(prompt)
 
         if request.provider == "ollama":
@@ -67,10 +87,14 @@ class LLMClient:
         return self.execute(prompt).render()
 
     def render_response_preview(self, raw_text: str) -> str:
+        # Parsing is kept outside execute() to let debugging and policy layers
+        # inspect raw model output independently.
         parser = LLMOutputParser()
         return parser.render_preview(raw_text)
 
     def _execute_ollama(self, request: LLMRequest) -> LLMResponse:
+        # This currently uses CLI execution for portability. Swap this with
+        # native HTTP API calls in a later stage when streaming is added.
         try:
             completed = run(
                 ["ollama", "run", request.model, request.prompt],
@@ -92,6 +116,8 @@ class LLMClient:
         return LLMResponse(provider=request.provider, model=request.model, available=True, output=completed.stdout.strip())
 
     def _execute_llama_cpp(self, request: LLMRequest) -> LLMResponse:
+        # Assumes llama.cpp CLI availability in PATH. Model resolution is still
+        # caller-provided and should be hardened in packaging stages.
         try:
             completed = run(
                 ["llama-cli", "-m", request.model, "-p", request.prompt],

@@ -129,12 +129,15 @@ detect_distro() {
   DISTRO_ID=${ID:-unknown}
   case "$DISTRO_ID" in
     org.freedesktop.platform|flatpak|linux)
+      # Some containerized/flatpak environments expose generic IDs. The
+      # package-manager detector below is the authoritative fallback.
       DISTRO_ID=${ID_LIKE:-unknown}
       ;;
   esac
 }
 
 detect_package_manager() {
+  # Use command availability over distro strings for resilience.
   if command -v apt >/dev/null 2>&1; then
     PACKAGE_MANAGER="apt"
   elif command -v pacman >/dev/null 2>&1; then

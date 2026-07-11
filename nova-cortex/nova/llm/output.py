@@ -12,14 +12,22 @@ class LLMOutput:
     tool_call: ToolCall | None = None
 
     def render(self) -> str:
+        # Rendered output is line-safe for IPC transports and logs.
         text = self.raw_text.replace("\n", " ").strip()
         if self.tool_call is not None:
-            return f"llm_output:tool={self.tool_call.tool} arguments={self.tool_call.to_json()} text={text}"
+            arguments_json = json.dumps(self.tool_call.arguments, sort_keys=True)
+            return f"llm_output:tool={self.tool_call.tool} arguments={arguments_json} text={text}"
         return f"llm_output:text={text}"
 
 
 @dataclass(slots=True)
 class LLMOutputParser:
+    """Extracts a tool envelope from model output when present.
+
+    The parser scans for the first decodable JSON object with a 'tool' field
+    so it can handle model responses that wrap JSON with extra prose.
+    """
+
     def parse(self, raw_text: str) -> LLMOutput:
         stripped = raw_text.strip()
         tool_call = self._extract_tool_call(stripped)
@@ -32,6 +40,9 @@ class LLMOutputParser:
         if not raw_text:
             return None
 
+        # Scan left-to-right and decode the first valid JSON object containing
+        # a `tool` key. This tolerates surrounding model prose such as:
+        # "Sure, here is the call: { ... }".
         decoder = json.JSONDecoder()
         for index, character in enumerate(raw_text):
             if character != "{":

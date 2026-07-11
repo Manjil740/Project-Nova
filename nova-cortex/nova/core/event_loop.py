@@ -31,6 +31,8 @@ class CortexApp:
         server = IpcServer(self.socket_path, self.project_root, state, system_profile, config, llm_engine, llm_client)
         await server.start()
         print(f"IPC listener active at {self.socket_path}")
+        # Startup diagnostics are intentionally printed once for quick health
+        # checks in local terminals and service logs.
         print(RuntimeReport(state=state, system_profile=system_profile, config=config, llm_engine=llm_engine).render())
         print(llm_client.render_preview(build_system_prompt(state, system_profile)))
 

@@ -46,6 +46,16 @@ This file tracks implementation progress, small code adjustments, and functional
 - Prepared the runtime for the next stage where real backend output can be routed into tool execution decisions.
 - Validated the stage with `python3 -m compileall nova` and IPC probes that returned both a parsed JSON tool call and a plain-text normalized response.
 
+### Stage 7: Handoff Hardening
+- Performed an in-depth recheck across installer, runtime, router, and LLM bridge.
+- Added targeted comments/docstrings in high-change files to make behavior and extension points clearer for the next agent.
+- Removed dead router helper code (`_split`) to reduce confusion during future edits.
+- Normalized `llm_output` rendering so extracted tool arguments are reported cleanly as argument JSON.
+- Added `HANDOFF.md` with architecture map, validation commands, known behavior, and immediate next tasks.
+- Revalidated with `bash -n install.sh` and `python3 -m compileall nova` after all handoff-focused edits.
+- Expanded comments and docstrings with detailed IPC contract, extension guidelines, parser behavior notes, and safety expectations in router/LLM modules.
+- Revalidated again with `python3 -m compileall nova` after the detailed comment pass.
+
 ### Micro Adjustments
 - Replaced the print-only entrypoint in `nova-cortex/nova/main.py` with an async startup path.
 - Added `nova-cortex/nova/core/event_loop.py` to hold the main Cortex runtime loop.
@@ -105,6 +115,9 @@ This file tracks implementation progress, small code adjustments, and functional
 - Added a guarded backend execution bridge so the configured provider can be contacted later without changing the request shape again.
 - Added `llm_execute_preview` to show the backend execution path and output or error state in a controlled preview form.
 - Added `nova-cortex/nova/llm/output.py` and `llm_response_preview` so backend text can be normalized into structured output.
+- Added clearer inline comments/docstrings in runtime and LLM bridge modules for easier continuation by a new agent.
+- Added `HANDOFF.md` to centralize continuation notes, entry points, and next implementation priorities.
+- Upgraded comments from short notes to actionable maintenance guidance in `tools/registry.py`, `llm/client.py`, and `llm/output.py`.
 
 ### Notes
 - The current implementation is still a scaffold. It now boots a minimal async runtime and accepts local socket triggers, but it does not yet load an LLM, STT/TTS, or tool router.
