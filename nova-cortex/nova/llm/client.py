@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from subprocess import TimeoutExpired
 from subprocess import PIPE, run
 from typing import Any
@@ -63,7 +63,7 @@ class LLMClient:
     """
 
     config: NovaConfig
-    _parser: LLMOutputParser = LLMOutputParser()
+    _parser: LLMOutputParser = field(default_factory=LLMOutputParser)
 
     def build_request(self, prompt: str) -> LLMRequest:
         return LLMRequest(

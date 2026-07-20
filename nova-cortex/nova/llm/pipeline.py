@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
 
 from nova.core.config import NovaConfig
 from nova.core.platform import SystemProfile
@@ -9,7 +10,9 @@ from nova.llm.client import LLMClient, LLMResponse
 from nova.llm.output import LLMOutputParser
 from nova.llm.prompts import build_system_prompt
 from nova.llm.schema import ToolCall
-from nova.tools.registry import ToolRouter
+
+if TYPE_CHECKING:
+    from nova.tools.registry import ToolRouter
 
 
 @dataclass(slots=True)
@@ -46,7 +49,7 @@ class Pipeline:
     config: NovaConfig
     llm_client: LLMClient
     router: ToolRouter
-    parser: LLMOutputParser = LLMOutputParser()
+    parser: LLMOutputParser = field(default_factory=LLMOutputParser)
     conversation_history: list[ConversationTurn] = field(default_factory=list)
 
     # ------------------------------------------------------------------

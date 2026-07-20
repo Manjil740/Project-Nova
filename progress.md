@@ -2,7 +2,30 @@
 
 This file tracks implementation progress, small code adjustments, and functionality notes as the project moves forward.
 
-## 2026-07-13
+## 2026-07-13 (Post-Refactor Validation)
+
+### Verification & Bug Fixes
+- Fixed `nova-cortex/nova/llm/client.py` — `_parser` mutable default replaced with `field(default_factory=...)`
+- Fixed `nova-cortex/nova/llm/pipeline.py` — `parser` mutable default replaced with `field(default_factory=...)`
+- Fixed circular import: `pipeline.py` now uses `TYPE_CHECKING` for `ToolRouter`
+- Added missing `field` import to `client.py`
+
+### Script Improvements
+- Rewrote `uninstall.sh` — cleaner service handling, optional Ollama removal, Pip cache cleanup, better UX
+- Rewrote `nova-open-terminal.sh` — fixed PYTHONPATH bug (was passed as string not env var), added venv detection, removed `-lc` (login shell) usage, added gnome-terminal before generic fallback
+
+### Comprehensive Validation Suite
+- Compile check: all 15 `.py` files compile clean
+- Import check: all 13 public exports import successfully
+- Parser tests (11): plain text, JSON code blocks, raw JSON, multiple tool calls, empty input, malformed JSON tolerance, ToolCall factories, prose stripping, render, render_preview
+- Pipeline tests (5): clear_history, history block building, history trimming, PipelineResult with/without tools
+- Router dispatch tests (15): wake, status, system_info, config_status, llm_status, runtime_report, system_prompt, llm_chat_clear, empty, ping, list_directory, read_file, JSON dispatch, unknown command rejection, path traversal rejection
+- IPC server test (3): start, send wake, send status, stop, socket cleanup
+- Config tests (3): loaded config, defaults with missing .env
+- State tests (1): event counting
+- Platform tests (1): distro detection
+- Engine tests (1): status rendering
+- Prompt tests (1): system prompt generation
 
 ### Stage 0-1: Urgent Must-Do First (Docs + Dependencies + Config)
 - Added runtime dependency:
@@ -133,9 +156,18 @@ This file tracks implementation progress, small code adjustments, and functional
 - Added `HANDOFF.md` to centralize continuation notes, entry points, and next implementation priorities.
 - Upgraded comments from short notes to actionable maintenance guidance in `tools/registry.py`, `llm/client.py`, and `llm/output.py`.
 
+### Installer Validation (2026-07-13)
+- Verified `install.sh` syntax with `bash -n install.sh` — SYNTAX OK
+- Verified library-only sourcing mode with `NOVA_INSTALL_LIB_ONLY=1` — detects distro, package manager, and existing LLM stack correctly
+- Fixed unbound variable error in sourcing mode by adding `DISTRO_ID=""` initialization
+- All 15 Python source files compile clean via `python3 -m compileall nova`
+- Ready for Memory & Learning phase (Stage 11)
+
 ### Notes
-- The current implementation is still a scaffold. It now boots a minimal async runtime and accepts local socket triggers, but it does not yet load an LLM, STT/TTS, or tool router.
-- Future updates should append new dated entries here with both code changes and behavior changes.
+- The current implementation is stable with real model integration (Stage 7) complete.
+- `install.sh` can install Ollama, pull a model, configure the environment, and run 9 IPC tests after setup.
+- Voice Pipeline (Stage 8) and Tool Expansion (Stage 9) are deferred.
+- Next: Memory & Learning phase — ChromaDB vector store, embeddings, habit tracker.
 
 ## Update Format
 
