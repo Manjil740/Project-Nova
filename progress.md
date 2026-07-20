@@ -2,6 +2,23 @@
 
 This file tracks implementation progress, small code adjustments, and functionality notes as the project moves forward.
 
+## 2026-07-13 — Phase A: Foundation Hardening & Memory Pre-Wiring
+
+### What Changed
+- Added `nova/core/errors.py` — typed exception hierarchy (`NovaError`, `NovaConfigError`, `NovaMemoryError`, `NovaToolError`)
+- Added `nova/core/storage.py` — `StorageManager` for `~/.local/share/nova/` data directory layout (chroma_db, logs, data)
+- Added `nova/core/events.py` — `EventBus` singleton for decoupled component communication (subscribe/publish pattern)
+- Updated `nova/core/config.py` — added memory/storage fields (`memory_enabled`, `chroma_db_path`, `embedding_batch_size`, `data_dir`)
+- Updated `nova/core/state.py` — added `record_memory_query()`, `record_tool_call()`, persistent `save()`/`load()` to JSON
+- Updated `nova/__init__.py` — exposed all new modules in `__all__`
+- Updated `install.sh` — added `create_data_directories()` for `~/.local/share/nova/`, fixed systemd unit write with `sudo tee`, added model manifest command display in `pull_ollama_model()`
+
+### What Was Validated
+- `python3 -m compileall nova` — all source files compile clean with zero errors
+
+### Follow-up Needed
+- Phase B: ChromaDB vector store integration for long-term memory
+
 ## 2026-07-13 (Post-Refactor Validation)
 
 ### Verification & Bug Fixes
@@ -270,3 +287,79 @@ The current codebase is stable for the scaffold, runtime, routing, config, diagn
 - Shielded command approval flow and sandboxing.
 - Memory persistence, vector retrieval, and habit tracking.
 - Service integration for real system startup and boot behavior.
+## 2026-07-13 — Phase B: ChromaDB Vector Store & Memory Integration ✅
+
+**Date:** 2026-07-13
+
+**What changed:**
+
+### Step 2: VectorDB Implementation (`nova/memory/vector_db.py`)
+- Replaced stub with full ChromaDB `PersistentClient` integration
+- `initialize()` — creates client, gets/creates collection with cosine space
+- `add_documents(ids, documents, embeddings, metadatas)` — CRUD add with metadata
+- `similarity_search(query_embeddings, n_results, where)` — search with optional metadata filter
+- `delete(ids)` / `update(ids, documents, embeddings, metadatas)` — update/delete operations
+- `list_collections()` / `delete_collection(name)` — collection management
+- `count` property — real-time document count
+- Enhanced `render_status()` showing doc count, collection state, path
+
+### Step 3: Embeddings Implementation (`nova/memory/embeddings.py`)
+- Replaced stub with Ollama HTTP API client (`POST /api/embeddings`)
+- `initialize()` — probes Ollama connectivity and model availability
+- `embed(text)` — single text → vector with LRU cache
+- `embed_batch(texts)` — batched embedding with configurable batch size
+- LRU cache via `OrderedDict` with `cache_size=1000` default
+- Cache statistics tracking (hits, misses, total embedded)
+- Error handling: connection refused, timeout, model unavailable (404), invalid JSON
+
+### Step 4: HabitTracker Implementation (`nova/memory/habit_tracker.py`)
+- Full SQLite-backed command logging with schema
+- `log_command(command, arguments, success, duration_ms, context)` — log interactions
+- `get_recent_commands(hours)` / `get_command_stats(days)` — query methods
+- DBSCAN clustering for temporal pattern detection (when scikit-learn available)
+- Heuristic fallback for environments without scikit-learn
+- `analyze_patterns()` — detects temporal patterns with confidence scoring
+- `get_suggestions(max_suggestions=5)` — proactive suggestions engine (usage peaks, error rates, time-based, diversity)
+- `run_weekly_analysis()` — comprehensive weekly analysis summary
+- Pattern storage and loading from database
+- Suggestion lifecycle management (shown/dismissed)
+
+### Step 5: Wiring & Integration
+- **`nova/memory/__init__.py`** — updated docstring, exports `HabitPattern`, `HabitSuggestion`
+- **`nova/tools/registry.py`** — added `vector_db`, `embeddings`, `habit_tracker` fields to `ToolRouter`
+  - Added IPC commands: `memory_status`, `memory_store`, `memory_search`, `memory_habits`, `memory_analyze`
+- **`nova/core/event_loop.py`** — instantiates `VectorDB`, `Embeddings`, `HabitTracker`; calls `initialize()`; wires to router and pipeline
+  - Subscribes `habit_tracker.log_command()` to `EventBus` for automatic command logging on `tool:executed` events
+- **`nova/llm/pipeline.py`** — added `vector_db`, `embeddings`, `habit_tracker` fields
+  - `_build_memory_context(user_input)` — injects relevant memory context into LLM prompts
+  - `_auto_store_memory(user_input, response)` — automatically stores conversations in vector DB
+  - Memory context includes semantic search results and recent habit activity
+- **`nova/__init__.py`** — exported `VectorDB`, `Embeddings`, `HabitTracker`, `HabitPattern`, `HabitSuggestion`
+- **`pyproject.toml`** — added `scikit-learn>=1.0.0` dependency
+
+### What Was Validated
+- `python3 -m compileall nova` — all source files compile clean with zero errors
+- `import nova` — all 20+ public exports import successfully
+- `VectorDB`, `Embeddings`, `HabitTracker` slots verified
+- `Pipeline` accepts memory components without breaking existing interface
+- `_SKLEARN_AVAILABLE=True` — scikit-learn 1.9.0 detected for DBSCAN clustering
+
+### Files modified/created:
+- `nova-cortex/nova/memory/vector_db.py` — full ChromaDB implementation
+- `nova-cortex/nova/memory/embeddings.py` — full Ollama embedding client
+- `nova-cortex/nova/memory/habit_tracker.py` — full SQLite + DBSCAN habit tracker
+- `nova-cortex/nova/memory/__init__.py` — updated exports
+- `nova-cortex/nova/tools/registry.py` — added memory IPC routes
+- `nova-cortex/nova/core/event_loop.py` — memory initialization and wiring
+- `nova-cortex/nova/llm/pipeline.py` — memory context injection and auto-storage
+- `nova-cortex/nova/__init__.py` — memory class exports
+- `nova-cortex/pyproject.toml` — added scikit-learn dependency
+- `TODO.md` — updated with [*] markers
+- `progress.md` — this entry
+
+### Follow-up Needed
+- Phase C: Memory Router Integration — deeper integration with prompt generation
+- Phase D: Shield & Sandbox — risk classification, consent prompts
+- Phase E: Tool Expansion — bash executor, web search
+- Phase F: Voice Pipeline — STT/TTS
+- Phase G: Packaging — DEB/RPM, systemd

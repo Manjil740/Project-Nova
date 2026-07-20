@@ -308,14 +308,31 @@ pull_ollama_model() {
     return
   fi
 
-  printf '%bDownloading model: %s (this may take a while depending on your internet speed)...%b\n' "$C_BLUE" "$model_name" "$C_RESET"
-  printf '%bThis will download several GB of data.%b\n' "$C_YELLOW" "$C_RESET"
+  printf '\n%b┌──────────────────────────────────────────────────────────┐%b\n' "$C_BOLD" "$C_RESET"
+  printf '%b│  Model Manifest Command                                 │%b\n' "$C_GREEN" "$C_RESET"
+  printf '%b│                                                        │%b\n' "$C_GREEN" "$C_RESET"
+  printf '%b│  %bollama pull %-34s%b │%b\n' "$C_GREEN" "$C_CYAN" "$model_name" "$C_GREEN" "$C_RESET"
+  printf '%b│                                                        │%b\n' "$C_GREEN" "$C_RESET"
+  printf '%b└──────────────────────────────────────────────────────────┘%b\n' "$C_BOLD" "$C_RESET"
 
-  if prompt_yes_no "Proceed with download?" Y; then
+  printf '%bDownloading model: %s%b\n' "$C_BLUE" "$model_name" "$C_RESET"
+  printf '%bSize range: 2-8 GB depending on model quantization.%b\n' "$C_YELLOW" "$C_RESET"
+  printf '%bInternet speed will determine download time (may be 5-30+ mins).%b\n' "$C_DIM" "$C_RESET"
+  printf '\n'
+
+  if prompt_yes_no "Run 'ollama pull $model_name' now?" Y; then
+    printf '%bRunning: ollama pull %s%b\n' "$C_BOLD" "$model_name" "$C_RESET"
     ollama pull "$model_name"
-    printf '%bModel %s downloaded successfully.%b\n' "$C_GREEN" "$model_name" "$C_RESET"
+    local pull_exit=$?
+    if [[ $pull_exit -eq 0 ]]; then
+      printf '\n%b✓ Model %s downloaded successfully!%b\n' "$C_GREEN" "$model_name" "$C_RESET"
+    else
+      printf '\n%b✗ Model pull failed (exit code %d).%b\n' "$C_RED" "$pull_exit" "$C_RESET"
+      printf '%bYou can retry later with:%b ollama pull %s\n' "$C_YELLOW" "$C_RESET" "$model_name"
+    fi
   else
-    printf '%bSkipped model download. You can pull it later with: ollama pull %s%b\n' "$C_YELLOW" "$model_name" "$C_RESET"
+    printf '%bSkipped. You can pull the model manually anytime with:%b\n' "$C_YELLOW" "$C_RESET"
+    printf '  %bollama pull %s%b\n' "$C_CYAN" "$model_name" "$C_RESET"
   fi
 }
 
@@ -373,6 +390,21 @@ verify_model_works() {
     printf '  Response: %s\n' "$response"
     return 1
   fi
+}
+
+# ------------------------------------------------------------------
+# DATA DIRECTORIES
+# ------------------------------------------------------------------
+
+create_data_directories() {
+  spinner "Creating Nova data directories" 2
+  mkdir -p "$PROJECT_ROOT/nova-cortex/data"
+  mkdir -p "$PROJECT_ROOT/nova-cortex/.runtime"
+  # Create user-local data storage for memory/vector DB/habits
+  local nova_data_dir="${HOME}/.local/share/nova"
+  mkdir -p "$nova_data_dir/chroma_db"
+  mkdir -p "$nova_data_dir/logs"
+  printf '%bNova data directory: %s%b\n' "$C_DIM" "$nova_data_dir" "$C_RESET"
 }
 
 # ------------------------------------------------------------------
@@ -480,7 +512,7 @@ install_systemd_unit() {
   spinner "Installing systemd unit" 2
   sudo mkdir -p /etc/systemd/system
 
-  cat > "$unit_path" <<EOF
+  sudo tee "$unit_path" > /dev/null <<EOF
 [Unit]
 Description=Project Nova Cortex Service
 After=network-online.target
@@ -492,17 +524,17 @@ WorkingDirectory=$workdir
 EOF
 
   if [[ "$nova_cli" == "__python3_dash_m_nova_main__" ]]; then
-    cat >> "$unit_path" <<EOF
+    sudo tee -a "$unit_path" > /dev/null <<EOF
 Environment=PYTHONPATH=$workdir
 ExecStart=/usr/bin/python3 -m nova.main
 EOF
   else
-    cat >> "$unit_path" <<EOF
+    sudo tee -a "$unit_path" > /dev/null <<EOF
 ExecStart=$nova_cli
 EOF
   fi
 
-  cat >> "$unit_path" <<EOF
+  sudo tee -a "$unit_path" > /dev/null <<EOF
 Restart=on-failure
 RestartSec=3
 
@@ -703,6 +735,9 @@ main() {
       pull_ollama_model "$MODEL_PRESET"
     fi
   fi
+
+  # Create data directories
+  create_data_directories
 
   # Write configuration
   write_configuration

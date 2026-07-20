@@ -9,11 +9,15 @@ from nova.core.ipc_server import IpcServer
 from nova.core.platform import SystemProfile
 from nova.core.report import RuntimeReport
 from nova.core.state import CortexState
+from nova.core.events import EventBus, Event
 from nova.llm.engine import LLMEngine
 from nova.llm.client import LLMClient
 from nova.llm.prompts import build_system_prompt
 from nova.llm.pipeline import Pipeline
 from nova.tools.registry import ToolRouter
+from nova.memory.vector_db import VectorDB
+from nova.memory.embeddings import Embeddings
+from nova.memory.habit_tracker import HabitTracker
 
 
 @dataclass(slots=True)
@@ -32,7 +36,54 @@ class CortexApp:
         state = CortexState()
         system_profile = SystemProfile.detect()
 
-        # Create the tool router
+        # ------------------------------------------------------------------
+        # Initialize Memory Components
+        # ------------------------------------------------------------------
+        vector_db = VectorDB(
+            persist_directory=Path(config.chroma_db_path).expanduser(),
+            embedding_dimension=768,
+        )
+        embeddings = Embeddings(
+            model_name=config.embedding_model,
+            batch_size=config.embedding_batch_size,
+            base_url=config.llm_base_url,
+        )
+        habit_tracker = HabitTracker()
+
+        # Initialize if memory is enabled
+        memory_initialized = False
+        if config.memory_enabled:
+            try:
+                vector_db.initialize()
+                embeddings.initialize()
+                habit_tracker.initialize()
+                memory_initialized = True
+                print("[Memory] VectorDB, Embeddings, and HabitTracker initialized.")
+            except Exception as exc:
+                print(f"[Memory] WARNING: Memory initialization failed: {exc}")
+                print("[Memory] Nova will continue without memory features.")
+
+        # Subscribe habit tracker to event bus for automatic command logging
+        if memory_initialized:
+            event_bus = EventBus.get_instance()
+
+            def on_tool_executed(event: Event) -> None:
+                tool_name = event.data.get("tool", "unknown")
+                args = event.data.get("arguments", "")
+                success = event.data.get("success", True)
+                duration = event.data.get("duration_ms", 0.0)
+                habit_tracker.log_command(
+                    command=tool_name,
+                    arguments=str(args),
+                    success=success,
+                    duration_ms=duration,
+                )
+
+            event_bus.subscribe("tool:executed", on_tool_executed)
+
+        # ------------------------------------------------------------------
+        # Create the tool router with memory components
+        # ------------------------------------------------------------------
         router = ToolRouter(
             project_root=self.project_root,
             state=state,
@@ -40,6 +91,9 @@ class CortexApp:
             config=config,
             llm_engine=llm_engine,
             llm_client=llm_client,
+            vector_db=vector_db if memory_initialized else None,
+            embeddings=embeddings if memory_initialized else None,
+            habit_tracker=habit_tracker if memory_initialized else None,
         )
 
         # Create the pipeline with the router for tool execution
@@ -47,6 +101,9 @@ class CortexApp:
             config=config,
             llm_client=llm_client,
             router=router,
+            vector_db=vector_db if memory_initialized else None,
+            embeddings=embeddings if memory_initialized else None,
+            habit_tracker=habit_tracker if memory_initialized else None,
         )
 
         # Attach pipeline back to router for IPC dispatch
@@ -73,6 +130,12 @@ class CortexApp:
             ).render()
         )
         print(llm_client.render_preview(build_system_prompt(state, system_profile)))
+
+        # Print memory status if initialized
+        if memory_initialized:
+            print(f"[Memory] {vector_db.render_status()}")
+            print(f"[Memory] {embeddings.render_status()}")
+            print(f"[Memory] {habit_tracker.render_status()}")
 
         try:
             await asyncio.Event().wait()

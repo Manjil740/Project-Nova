@@ -9,7 +9,9 @@ description = "Project Nova Cortex core service"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
-    "requests>=2.31.0"
+    "requests>=2.31.0",
+    "chromadb>=0.4.0",
+    "scikit-learn>=1.0.0"
 ]
 
 [project.scripts]
