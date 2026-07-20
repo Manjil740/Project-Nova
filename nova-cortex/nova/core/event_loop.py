@@ -12,11 +12,14 @@ from nova.core.state import CortexState
 from nova.llm.engine import LLMEngine
 from nova.llm.client import LLMClient
 from nova.llm.prompts import build_system_prompt
+from nova.llm.pipeline import Pipeline
+from nova.tools.registry import ToolRouter
 
 
 @dataclass(slots=True)
 class CortexApp:
     project_root: Path
+    socket_path: Path | None = None
 
     def __post_init__(self) -> None:
         self.socket_path = self.project_root / ".runtime" / "nova-cortex.sock"
@@ -28,12 +31,47 @@ class CortexApp:
         llm_client = LLMClient(config)
         state = CortexState()
         system_profile = SystemProfile.detect()
-        server = IpcServer(self.socket_path, self.project_root, state, system_profile, config, llm_engine, llm_client)
+
+        # Create the tool router
+        router = ToolRouter(
+            project_root=self.project_root,
+            state=state,
+            system_profile=system_profile,
+            config=config,
+            llm_engine=llm_engine,
+            llm_client=llm_client,
+        )
+
+        # Create the pipeline with the router for tool execution
+        pipeline = Pipeline(
+            config=config,
+            llm_client=llm_client,
+            router=router,
+        )
+
+        # Attach pipeline back to router for IPC dispatch
+        router.pipeline = pipeline
+
+        server = IpcServer(
+            self.socket_path,
+            self.project_root,
+            state,
+            system_profile,
+            config,
+            llm_engine,
+            llm_client,
+            router,
+        )
         await server.start()
         print(f"IPC listener active at {self.socket_path}")
-        # Startup diagnostics are intentionally printed once for quick health
-        # checks in local terminals and service logs.
-        print(RuntimeReport(state=state, system_profile=system_profile, config=config, llm_engine=llm_engine).render())
+        print(
+            RuntimeReport(
+                state=state,
+                system_profile=system_profile,
+                config=config,
+                llm_engine=llm_engine,
+            ).render()
+        )
         print(llm_client.render_preview(build_system_prompt(state, system_profile)))
 
         try:

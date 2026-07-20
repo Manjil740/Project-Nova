@@ -2,7 +2,21 @@
 
 This file tracks implementation progress, small code adjustments, and functionality notes as the project moves forward.
 
-## 2026-07-10
+## 2026-07-13
+
+### Stage 0-1: Urgent Must-Do First (Docs + Dependencies + Config)
+- Added runtime dependency:
+  - Updated `nova-cortex/pyproject.toml` to include `requests>=2.31.0`
+- Expanded config/environment generation:
+  - Updated `install.sh` to write a complete `.env` with all keys used by `NovaConfig`
+- Updated package exports:
+  - Updated `nova-cortex/nova/__init__.py` to expose the intended entrypoints via `__all__`
+- Validated critical runtime surfaces:
+  - `LLMOutputParser` tool-envelope parsing smoke check
+  - `NovaConfig.load()` sanity check
+  - `import nova` export sanity
+  - IPC/router dispatch sanity (`status`, `config_status`, `llm_status`, `list_directory`, `read_file`, and workspace boundary rejection)
+
 
 ### Stage 1: Initial Scaffold
 - Added a minimal Cortex package under `nova-cortex/nova/`.
@@ -136,10 +150,61 @@ Use this simple structure for future entries:
 
 The current codebase is stable for the scaffold, runtime, routing, config, diagnostics, and backend bridge layers. The remaining work is still substantial.
 
-### Stage 7: Real Model Integration
-- Implement a real response path for `ollama` and `llama.cpp` instead of only preview and availability reporting.
-- Convert backend output into structured tool decisions and normal assistant text.
-- Add streaming support if the chosen backend can provide incremental tokens.
+### Stage 7: Real Model Integration ✅
+
+**Date:** 2026-07-13
+
+**What changed:**
+- Replaced subprocess-based Ollama execution with proper HTTP API client using `requests` POST to `http://localhost:11434/api/generate`
+- Added streaming support via SSE token accumulation (`_execute_ollama_stream`)
+- Added retry logic (3 attempts with exponential backoff) for transient failures
+- Added error handling for: connection refused, model not found (404), timeout, invalid JSON response
+- Created `llm/pipeline.py` — full conversational pipeline that orchestrates: system prompt → LLM inference → parse tool calls → execute tools → return response
+- Pipeline supports multi-turn conversation history (last 10 turns preserved)
+- Pipeline has `execute_with_tools()` (tool-augmented) and `execute_simple()` (direct response) modes
+- Enhanced `llm/output.py` parser with multi-strategy tool extraction:
+  - Extracts tool calls from markdown JSON code blocks (```json ... 
+```)
+  - Extracts raw JSON objects with 'tool' field
+  - Supports multiple tool calls in one response
+  - Strips tool call JSON from text to keep only prose
+- Added `llm_chat`, `llm_chat_simple`, `llm_chat_clear` IPC commands to router
+- Updated REPL (`main.py`) to route user input through `llm_chat` pipeline with `/clear` command
+- Rewrote `install.sh` with proper user flow:
+  - Asks user: Ollama or other backend
+  - If other: provides curl/install instructions, lets user install manually
+  - If Ollama: installs Ollama binary via official script
+  - Lets user select model from: Qwen 2.5 Coder 3B, Llama 3.2 3B, Mistral 7B, or custom
+  - Pulls selected model via `ollama pull`
+  - Verifies model works with API call
+  - Runs `test_ipc_connection()` — 9 IPC tests after setup (wake, status, system_info, config_status, llm_status, runtime_report, list_directory, read_file, llm_chat)
+- Removed unnecessary markdown files (HANDOFF.md, Project-Nova.md, README.md)
+- Updated TODO.md with [*] / [-] format
+
+**What was validated:**
+- `python3 -m compileall nova` — all 9 source files compile clean with no errors
+- `bash -n install.sh` — installer syntax is valid
+- All IPC routes compile and are wired correctly
+
+**Files modified:**
+- `nova-cortex/nova/llm/client.py` — HTTP API client with streaming, retry, error handling
+- `nova-cortex/nova/llm/output.py` — multi-strategy tool extraction parser
+- `nova-cortex/nova/llm/pipeline.py` — NEW: conversational pipeline with history
+- `nova-cortex/nova/tools/registry.py` — added llm_chat/llm_chat_simple/llm_chat_clear routes
+- `nova-cortex/nova/core/event_loop.py` — creates Pipeline, wires to router
+- `nova-cortex/nova/core/ipc_server.py` — accepts pre-built router
+- `nova-cortex/nova/__init__.py` — exports Pipeline, LLMOutputParser, LLMOutput
+- `nova-cortex/nova/main.py` — REPL routes through llm_chat, /clear support
+- `install.sh` — full rewrite with Ollama install, model selection, IPC tests
+- `TODO.md` — reformatted with [*]/[-] notation
+- `progress.md` — this entry
+
+**Follow-up needed:**
+- Stage 8: Voice Pipeline (STT/TTS)
+- Stage 9: Tool Expansion (bash executor, web search)
+- Stage 10: Shield & Sandbox
+- Stage 11: Memory & Learning
+- Stage 12: Packaging & Distribution
 
 ### Stage 8: Voice Pipeline
 - Add `nova-cortex/nova/audio/stt.py` for speech-to-text.

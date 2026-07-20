@@ -21,10 +21,11 @@ class IpcServer:
         config: NovaConfig | None = None,
         llm_engine: LLMEngine | None = None,
         llm_client: LLMClient | None = None,
+        router: ToolRouter | None = None,
     ) -> None:
         self.socket_path = socket_path
         self._server: asyncio.AbstractServer | None = None
-        self._router = ToolRouter(
+        self._router = router or ToolRouter(
             project_root=project_root,
             state=state,
             system_profile=system_profile,

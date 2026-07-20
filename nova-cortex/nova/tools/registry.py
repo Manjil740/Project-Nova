@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from nova.core.config import NovaConfig
@@ -12,6 +12,7 @@ from nova.llm.engine import LLMEngine
 from nova.llm.client import LLMClient
 from nova.llm.prompts import build_system_prompt
 from nova.llm.schema import ToolCall
+from nova.llm.pipeline import Pipeline
 from nova.tools.file_ops import list_directory, read_file
 
 
@@ -42,6 +43,7 @@ class ToolRouter:
     config: NovaConfig | None = None
     llm_engine: LLMEngine | None = None
     llm_client: LLMClient | None = None
+    pipeline: Pipeline | None = None
 
     def dispatch(self, message: str) -> str:
         # The socket protocol is line-based text. Parse once and route by name.
@@ -78,8 +80,7 @@ class ToolRouter:
                 return self.llm_engine.render_status() + "\n"
             return "llm:unavailable\n"
 
-        # LLM bridge commands intentionally separate preview/execute/parse
-        # to keep debugging and future policy controls straightforward.
+        # LLM bridge commands
         if command == "llm_request_preview":
             if self.llm_client is not None:
                 prompt = argument or build_system_prompt(self.state, self.system_profile)
@@ -109,6 +110,41 @@ class ToolRouter:
                 return self.llm_client.render_response_preview(raw_text) + "\n"
             return "llm_response:unavailable\n"
 
+        # === Conversational Chat (New) ===
+        if command == "llm_chat":
+            if self.pipeline is not None:
+                if not argument:
+                    return "llm_chat:missing_input\n"
+                result = self.pipeline.execute_with_tools(
+                    user_input=argument,
+                    state=self.state,
+                    system_profile=self.system_profile,
+                )
+                if self.state is not None:
+                    self.state.record_event(command)
+                return result.render() + "\n"
+            return "llm_chat:unavailable\n"
+
+        if command == "llm_chat_simple":
+            if self.pipeline is not None:
+                if not argument:
+                    return "llm_chat:missing_input\n"
+                result = self.pipeline.execute_simple(
+                    user_input=argument,
+                    state=self.state,
+                    system_profile=self.system_profile,
+                )
+                if self.state is not None:
+                    self.state.record_event(command)
+                return result.render() + "\n"
+            return "llm_chat:unavailable\n"
+
+        if command == "llm_chat_clear":
+            if self.pipeline is not None:
+                self.pipeline.clear_history()
+                return "llm_chat:history_cleared\n"
+            return "llm_chat:unavailable\n"
+
         if command == "runtime_report":
             report = RuntimeReport(
                 state=self.state,
@@ -116,7 +152,6 @@ class ToolRouter:
                 config=self.config,
                 llm_engine=self.llm_engine,
             )
-            # Keep report single-line for simple one-read IPC clients.
             return report.render().replace("\n", " | ") + "\n"
 
         # Workspace-bound read-only file helpers.
@@ -138,17 +173,10 @@ class ToolRouter:
         try:
             return ToolCall.from_message(message)
         except (ValueError, json.JSONDecodeError):
-            # Return an empty tool call instead of raising to keep the socket
-            # session stable on malformed payloads.
             return ToolCall(tool="", arguments={})
 
     def _resolve(self, raw_path: str) -> Path:
-        """Resolve user-supplied paths while enforcing workspace boundaries.
-
-        This guard prevents accidental or malicious path traversal outside the
-        project root. Any command that takes a file path should route through
-        this method instead of directly joining raw strings.
-        """
+        """Resolve user-supplied paths while enforcing workspace boundaries."""
 
         base_path = self.project_root or Path.cwd()
         if not raw_path:
