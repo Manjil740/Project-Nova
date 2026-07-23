@@ -167,7 +167,8 @@ install_system_dependencies() {
   case "$PACKAGE_MANAGER" in
     apt)
       spinner "Updating apt package lists" 2
-      sudo apt update
+      sudo apt update || printf '%bWARNING: apt update failed (network issue?). Continuing...%b\n' "$C_YELLOW" "$C_RESET"
+' "$C_YELLOW" "$C_RESET"
       spinner "Installing base dependencies" 2
       sudo apt install -y python3 python3-venv python3-pip cmake build-essential pkg-config curl
       ;;
@@ -572,12 +573,12 @@ test_ipc_connection() {
   # Start the server in background
   printf '%bStarting Cortex server for testing...%b\n' "$C_BLUE" "$C_RESET"
   PYTHONPATH="$PROJECT_ROOT/nova-cortex" "$venv_python" -m nova.main --server &
-  local server_pid=$!
-  sleep 2
+  server_pid=$!
+  sleep 4  # Increased wait time for server startup
 
   # Cleanup function
   cleanup() {
-    kill "$server_pid" 2>/dev/null || true
+    [[ -n "${server_pid:-}" ]] && kill "$server_pid" 2>/dev/null || true
     rm -f "$sock_path" 2>/dev/null || true
   }
   trap cleanup EXIT
@@ -704,8 +705,9 @@ s.close()
   fi
   printf '\n'
 
-  # Cleanup
+  # Cleanup (manually + remove trap to prevent out-of-scope local access later)
   cleanup
+  trap - EXIT
 }
 
 # ------------------------------------------------------------------
