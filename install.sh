@@ -575,10 +575,10 @@ test_ipc_connection() {
   server_pid=$!
   sleep 4  # Increased wait time for server startup
 
-  # Cleanup function
+  # Cleanup function - use :- defaults for all variables in case trap fires inside a subshell
   cleanup() {
-    [[ -n "${server_pid:-}" ]] && kill "$server_pid" 2>/dev/null || true
-    rm -f "$sock_path" 2>/dev/null || true
+    [[ -n "${server_pid:-}" ]] && kill "${server_pid}" 2>/dev/null || true
+    rm -f "${sock_path:-}" 2>/dev/null || true
   }
   trap cleanup EXIT
 
