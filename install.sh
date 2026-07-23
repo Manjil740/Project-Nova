@@ -105,18 +105,19 @@ prompt_menu_choice() {
   local options=("$@")
   local choice=""
 
-  print_section "$title"
+  # Print UI to stderr so only the selected value goes to stdout (for capture via $())
+  print_section "$title" >&2
   for index in "${!options[@]}"; do
-    printf '%b%2d)%b %s\n' "$C_CYAN" $((index + 1)) "$C_RESET" "${options[index]}"
+    printf '%b%2d)%b %s\n' "$C_CYAN" $((index + 1)) "$C_RESET" "${options[index]}" >&2
   done
 
   while true; do
-    read -r -p "Select an option [1-${#options[@]}]: " choice
+    read -r -p "Select an option [1-${#options[@]}]: " choice >&2
     if [[ $choice =~ ^[0-9]+$ ]] && (( choice >= 1 && choice <= ${#options[@]} )); then
       printf '%s' "${options[choice - 1]}"
       return 0
     fi
-    printf '%bInvalid selection. Try again.%b\n' "$C_YELLOW" "$C_RESET"
+    printf '%bInvalid selection. Try again.%b\n' "$C_YELLOW" "$C_RESET" >&2
   done
 }
 
@@ -303,7 +304,7 @@ pull_ollama_model() {
   fi
 
   # Check if already pulled
-  if ollama list 2>/dev/null | awk 'NR > 1 {print $1}' | grep -q "^${model_name}$"; then
+  if ollama list 2>/dev/null | awk 'NR > 1 {print $1}' | grep -qFx "${model_name}"; then
     printf '%bModel %s already downloaded.%b\n' "$C_GREEN" "$model_name" "$C_RESET"
     return
   fi
@@ -382,7 +383,7 @@ verify_model_works() {
   response=$(curl -s -X POST http://localhost:11434/api/generate \
     -d "{\"model\": \"$model_name\", \"prompt\": \"Hello\", \"stream\": false}" 2>/dev/null)
 
-  if echo "$response" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('response',''))" 2>/dev/null | grep -q .; then
+  if python3 -c "import sys,json; d=json.loads(sys.stdin.read()); sys.exit(0 if d.get('response','').strip() else 1)" <<< "$response"; then
     printf '%bModel %s is working correctly!%b\n' "$C_GREEN" "$model_name" "$C_RESET"
     return 0
   else
