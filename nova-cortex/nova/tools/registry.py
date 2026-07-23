@@ -15,7 +15,7 @@ from nova.llm.client import LLMClient
 from nova.llm.prompts import build_system_prompt
 from nova.llm.schema import ToolCall
 from nova.llm.pipeline import Pipeline
-from nova.tools.file_ops import list_directory, read_file
+from nova.tools.file_ops import list_directory, read_file, write_file, execute_command
 from nova.memory.vector_db import VectorDB
 from nova.memory.embeddings import Embeddings
 from nova.memory.habit_tracker import HabitTracker
@@ -23,25 +23,6 @@ from nova.memory.habit_tracker import HabitTracker
 
 @dataclass(slots=True)
 class ToolRouter:
-    """Single entry point for IPC command dispatch.
-
-    Keep this class deterministic and side-effect-light so later agents can
-    safely add higher-risk tools (bash, network, system actions) behind the
-    same routing surface.
-
-        IPC command contract (current):
-        - Incoming payload is a single line from the Unix socket.
-        - Payload may be either plain text (`tool arg`) or JSON (`{"tool": ...}`).
-        - Every dispatch result must return one trailing newline so simple clients
-            can read responses with a single `readline()` call.
-
-        Extension guideline:
-        - Add new command branches in `dispatch()`.
-        - Prefer explicit `*_unavailable` responses over exceptions.
-        - Record state events only for meaningful runtime actions.
-        - Keep path-based operations routed through `_resolve()`.
-    """
-
     project_root: Path | None = None
     state: CortexState | None = None
     system_profile: SystemProfile | None = None
@@ -54,7 +35,6 @@ class ToolRouter:
     habit_tracker: HabitTracker | None = None
 
     def dispatch(self, message: str) -> str:
-        # The socket protocol is line-based text. Parse once and route by name.
         tool_call = self._parse(message)
         command = tool_call.tool
         argument = tool_call.arguments.get("path", "")
@@ -196,6 +176,24 @@ class ToolRouter:
             self._publish_tool_executed(command, argument)
             return read_file(target) + "\n"
 
+        # === System Access Commands (write, execute) ===
+        if command == "write_file":
+            content = tool_call.arguments.get("content", "")
+            target = self._resolve(tool_call.arguments.get("path", argument))
+            if self.state is not None:
+                self.state.record_event(command)
+            self._publish_tool_executed(command, str(target))
+            return write_file(target, content) + "\n"
+
+        if command == "execute_command":
+            cmd = tool_call.arguments.get("command", argument)
+            cwd = tool_call.arguments.get("cwd", None)
+            timeout = int(tool_call.arguments.get("timeout", "30"))
+            if self.state is not None:
+                self.state.record_event(command)
+            self._publish_tool_executed(command, cmd[:80])
+            return execute_command(command=cmd, cwd=cwd, timeout=timeout) + "\n"
+
         return f"error:unknown_tool:{command}\n"
 
     # ------------------------------------------------------------------
@@ -203,22 +201,15 @@ class ToolRouter:
     # ------------------------------------------------------------------
 
     def _memory_status(self) -> str:
-        """Return combined status of all memory components."""
         vdb_status = self.vector_db.render_status() if self.vector_db else "vector_db:unavailable"
         emb_status = self.embeddings.render_status() if self.embeddings else "embeddings:unavailable"
         ht_status = self.habit_tracker.render_status() if self.habit_tracker else "habit_tracker:unavailable"
         return f"memory_status: {vdb_status} | {emb_status} | {ht_status}"
 
     def _memory_store(self, text: str, args: dict[str, Any]) -> str:
-        """Store a text in memory with embeddings.
-
-        Required argument: 'path' (the text content) OR 'text' key.
-        Optional: 'metadata' JSON string, 'id' custom ID.
-        """
         if not self.vector_db or not self.embeddings:
             return "memory_store:unavailable (memory not initialized)"
 
-        # Get the text from either 'path' (default from parser) or explicit 'text' key
         content = text or args.get("text", "")
         if not content:
             return "memory_store:missing_text (provide 'text' or use: memory_store <text>)"
@@ -235,10 +226,8 @@ class ToolRouter:
         doc_id = custom_id or f"mem_{int(time.time() * 1000)}_{hash(content) & 0xFFFFFF}"
 
         try:
-            # Generate embedding
             embedding = self.embeddings.embed(content)
 
-            # Store in vector DB
             self.vector_db.add_documents(
                 ids=[doc_id],
                 documents=[content],
@@ -246,7 +235,6 @@ class ToolRouter:
                 metadatas=[metadata],
             )
 
-            # Log to habit tracker
             if self.habit_tracker:
                 self.habit_tracker.log_command(
                     command="memory_store",
@@ -254,7 +242,6 @@ class ToolRouter:
                     success=True,
                 )
 
-            # Publish event
             EventBus.get_instance().publish(
                 Event("memory:stored", {"id": doc_id, "text": content[:100], "metadata": metadata})
             )
@@ -268,11 +255,6 @@ class ToolRouter:
             return f"memory_store:error {exc}"
 
     def _memory_search(self, query: str, args: dict[str, Any]) -> str:
-        """Search memory for similar texts.
-
-        Required argument: 'path' (the query text) OR 'text' key.
-        Optional: 'n_results' (int, default 5), 'where' (JSON filter).
-        """
         if not self.vector_db or not self.embeddings:
             return "memory_search:unavailable (memory not initialized)"
 
@@ -290,10 +272,8 @@ class ToolRouter:
                 pass
 
         try:
-            # Generate query embedding
             query_embedding = self.embeddings.embed(query_text)
 
-            # Search vector DB
             results = self.vector_db.similarity_search(
                 query_embeddings=[query_embedding],
                 n_results=n_results,
@@ -303,14 +283,12 @@ class ToolRouter:
             if not results:
                 return "memory_search:no_results"
 
-            # Format results
             output_parts = ["memory_search:results"]
             for i, r in enumerate(results):
                 doc = r.get("document", "")
                 dist = r.get("distance", 0)
                 meta = r.get("metadata", {})
                 doc_id = r.get("id", "")
-                # Truncate long docs
                 doc_display = doc[:100] + "..." if len(doc) > 100 else doc
                 output_parts.append(
                     f"[{i + 1}] id={doc_id} dist={dist:.4f} meta={meta} text={doc_display}"
@@ -325,7 +303,6 @@ class ToolRouter:
             return f"memory_search:error {exc}"
 
     def _memory_habits(self) -> str:
-        """Get habit tracker status and recent patterns."""
         if not self.habit_tracker:
             return "memory_habits:unavailable (habit tracker not initialized)"
 
@@ -357,7 +334,6 @@ class ToolRouter:
             return f"memory_habits:error {exc}"
 
     def _memory_analyze(self) -> str:
-        """Run full memory analysis and return summary."""
         if not self.habit_tracker:
             return "memory_analyze:unavailable"
 
@@ -369,7 +345,6 @@ class ToolRouter:
             return f"memory_analyze:error {exc}"
 
     def _publish_tool_executed(self, command, arguments="", success=True):
-        """Publish a tool:executed event for habit tracking."""
         EventBus.get_instance().publish(
             Event("tool:executed", {
                 "tool": command,
@@ -389,20 +364,10 @@ class ToolRouter:
             return ToolCall(tool="", arguments={})
 
     def _resolve(self, raw_path: str) -> Path:
-        """Resolve user-supplied paths while enforcing workspace boundaries."""
-
-        base_path = self.project_root or Path.cwd()
+        """Resolve user-supplied paths. Allows full system access."""
         if not raw_path:
-            return base_path.resolve()
+            return Path.cwd().resolve()
 
-        candidate_path = Path(raw_path).expanduser()
-        if candidate_path.is_absolute():
-            resolved_candidate = candidate_path.resolve(strict=False)
-        else:
-            resolved_candidate = (base_path / candidate_path).resolve(strict=False)
+        candidate_path = Path(raw_path).expanduser().resolve(strict=False)
+        return candidate_path
 
-        resolved_base = base_path.resolve(strict=False)
-        if resolved_candidate != resolved_base and resolved_base not in resolved_candidate.parents:
-            raise ValueError(f"path_outside_workspace:{resolved_candidate}")
-
-        return resolved_candidate

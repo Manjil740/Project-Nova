@@ -1,17 +1,17 @@
-# IPC Timeout Fix - DONE
+# ALL FIXES APPLIED - Novo can now execute system commands
 
-All three fixes applied:
+## IPC Timeout Fixes ✅
+- `event_loop.py`: IPC socket created before memory init (immediate availability)
+- `install.sh`: Active socket polling replaces fixed `sleep 4`
+- `embeddings.py`: Probe timeout reduced from 5s to 2s
 
-## Fix 1: `event_loop.py` - Move `server.start()` before memory initialization ✅
-- IPC socket is now created immediately before potentially slow memory init
-- Memory components (vector_db, embeddings, habit_tracker) initialized after socket is live
-- Router and pipeline get memory references reassigned after successful init
-
-## Fix 2: `install.sh` - Active socket polling in `test_ipc_connection()` ✅
-- Replaced `sleep 4` with active polling loop (up to 30 seconds)
-- Simplified Python test code — no redundant socket retry loop
-- Clearer error messages with socket timeout details
-
-## Fix 3: `embeddings.py` - Reduce probe timeout ✅
-- Embedding probe timeout reduced from 5s to 2s
+## System Access & Tool Execution Fixes ✅
+- `tools/file_ops.py`: Added `write_file()` and `execute_command()` functions
+- `tools/registry.py`: 
+  - Added `write_file` and `execute_command` dispatch routes
+  - Removed workspace boundary restriction in `_resolve()` (full system access)
+- `llm/prompts.py`: 
+  - Added complete tool-calling protocol with JSON format examples
+  - Listed all 8 available tools with arguments
+  - Instructed LLM to use tools instead of saying "I can't"
 

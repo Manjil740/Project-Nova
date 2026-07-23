@@ -281,10 +281,14 @@ class Pipeline:
 
     def _execute_tool(self, tool_call: ToolCall) -> str:
         """Execute a single tool call through the router."""
-        # Reconstruct the message as the router expects it
-        message = tool_call.to_json() if tool_call.arguments else tool_call.tool
-        if tool_call.arguments and "path" in tool_call.arguments:
+        # Always use JSON format for tools with complex arguments
+        # Plain text format only for simple path-based commands like list_directory/read_file
+        if tool_call.arguments and len(tool_call.arguments) == 1 and "path" in tool_call.arguments:
             message = f"{tool_call.tool} {tool_call.arguments['path']}"
+        elif tool_call.arguments:
+            message = tool_call.to_json()
+        else:
+            message = tool_call.tool
 
         try:
             result = self.router.dispatch(message)
