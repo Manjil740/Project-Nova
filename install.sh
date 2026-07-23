@@ -168,7 +168,6 @@ install_system_dependencies() {
     apt)
       spinner "Updating apt package lists" 2
       sudo apt update || printf '%bWARNING: apt update failed (network issue?). Continuing...%b\n' "$C_YELLOW" "$C_RESET"
-' "$C_YELLOW" "$C_RESET"
       spinner "Installing base dependencies" 2
       sudo apt install -y python3 python3-venv python3-pip cmake build-essential pkg-config curl
       ;;
@@ -614,7 +613,7 @@ print(data.decode('utf-8').rstrip())
 s.close()
 " 2>&1)
 
-    if echo "$result" | grep -qi "error\|unavailable\|SOCKET_TIMEOUT"; then
+    if echo "$result" | grep -qiE "error|unavailable|SOCKET_TIMEOUT"; then
       printf '%bFAILED%b\n' "$C_RED" "$C_RESET"
       printf '    %s\n' "$result"
       return 1
