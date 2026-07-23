@@ -72,7 +72,7 @@ class Embeddings:
             resp = self._client.post(
                 f"{self.base_url.rstrip('/')}/api/embeddings",
                 json={"model": self.model_name, "prompt": "ping"},
-                timeout=5,
+                timeout=2,
             )
         except requests.exceptions.ConnectionError:
             raise NovaConnectionError(

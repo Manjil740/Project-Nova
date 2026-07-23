@@ -37,7 +37,7 @@ class CortexApp:
         system_profile = SystemProfile.detect()
 
         # ------------------------------------------------------------------
-        # Initialize Memory Components
+        # Create components (memory objects are created but NOT initialized yet)
         # ------------------------------------------------------------------
         vector_db = VectorDB(
             persist_directory=Path(config.chroma_db_path).expanduser(),
@@ -50,15 +50,67 @@ class CortexApp:
         )
         habit_tracker = HabitTracker()
 
-        # Initialize if memory is enabled
+        # Create router (will get memory components after init)
+        router = ToolRouter(
+            project_root=self.project_root,
+            state=state,
+            system_profile=system_profile,
+            config=config,
+            llm_engine=llm_engine,
+            llm_client=llm_client,
+            vector_db=None,
+            embeddings=None,
+            habit_tracker=None,
+        )
+
+        # Create pipeline (will get memory components after init)
+        pipeline = Pipeline(
+            config=config,
+            llm_client=llm_client,
+            router=router,
+            vector_db=None,
+            embeddings=None,
+            habit_tracker=None,
+        )
+
+        # Attach pipeline back to router for IPC dispatch
+        router.pipeline = pipeline
+
+        # Start IPC server FIRST so the socket is available immediately
+        server = IpcServer(
+            self.socket_path,
+            self.project_root,
+            state,
+            system_profile,
+            config,
+            llm_engine,
+            llm_client,
+            router,
+        )
+        await server.start()
+        print(f"IPC listener active at {self.socket_path}")
+
+        # ------------------------------------------------------------------
+        # Initialize Memory Components (after socket is live)
+        # ------------------------------------------------------------------
         memory_initialized = False
         if config.memory_enabled:
             try:
                 vector_db.initialize()
+                print("[Memory] VectorDB initialized.")
                 embeddings.initialize()
+                print("[Memory] Embeddings initialized.")
                 habit_tracker.initialize()
+                print("[Memory] HabitTracker initialized.")
                 memory_initialized = True
-                print("[Memory] VectorDB, Embeddings, and HabitTracker initialized.")
+
+                # Attach memory components to router and pipeline now
+                router.vector_db = vector_db
+                router.embeddings = embeddings
+                router.habit_tracker = habit_tracker
+                pipeline.vector_db = vector_db
+                pipeline.embeddings = embeddings
+                pipeline.habit_tracker = habit_tracker
             except Exception as exc:
                 print(f"[Memory] WARNING: Memory initialization failed: {exc}")
                 print("[Memory] Nova will continue without memory features.")
@@ -80,47 +132,6 @@ class CortexApp:
                 )
 
             event_bus.subscribe("tool:executed", on_tool_executed)
-
-        # ------------------------------------------------------------------
-        # Create the tool router with memory components
-        # ------------------------------------------------------------------
-        router = ToolRouter(
-            project_root=self.project_root,
-            state=state,
-            system_profile=system_profile,
-            config=config,
-            llm_engine=llm_engine,
-            llm_client=llm_client,
-            vector_db=vector_db if memory_initialized else None,
-            embeddings=embeddings if memory_initialized else None,
-            habit_tracker=habit_tracker if memory_initialized else None,
-        )
-
-        # Create the pipeline with the router for tool execution
-        pipeline = Pipeline(
-            config=config,
-            llm_client=llm_client,
-            router=router,
-            vector_db=vector_db if memory_initialized else None,
-            embeddings=embeddings if memory_initialized else None,
-            habit_tracker=habit_tracker if memory_initialized else None,
-        )
-
-        # Attach pipeline back to router for IPC dispatch
-        router.pipeline = pipeline
-
-        server = IpcServer(
-            self.socket_path,
-            self.project_root,
-            state,
-            system_profile,
-            config,
-            llm_engine,
-            llm_client,
-            router,
-        )
-        await server.start()
-        print(f"IPC listener active at {self.socket_path}")
         print(
             RuntimeReport(
                 state=state,

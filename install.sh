@@ -573,7 +573,25 @@ test_ipc_connection() {
   printf '%bStarting Cortex server for testing...%b\n' "$C_BLUE" "$C_RESET"
   PYTHONPATH="$PROJECT_ROOT/nova-cortex" "$venv_python" -m nova.main --server &
   server_pid=$!
-  sleep 4  # Increased wait time for server startup
+
+  # Actively poll for the socket file (up to 30 seconds)
+  printf '%bWaiting for socket file...%b\n' "$C_DIM" "$C_RESET"
+  local socket_wait=0
+  local socket_timeout=30
+  while [[ $socket_wait -lt $socket_timeout ]]; do
+    if [[ -S "$sock_path" ]]; then
+      printf '%bSocket ready after %d seconds.%b\n' "$C_GREEN" "$socket_wait" "$C_RESET"
+      break
+    fi
+    sleep 1
+    ((socket_wait++))
+  done
+
+  if [[ ! -S "$sock_path" ]]; then
+    printf '%bSocket not created after %d seconds. Aborting tests.%b\n' "$C_RED" "$socket_timeout" "$C_RESET"
+    kill "${server_pid}" 2>/dev/null || true
+    return 1
+  fi
 
   # Cleanup function - use :- defaults for all variables in case trap fires inside a subshell
   cleanup() {
@@ -593,18 +611,12 @@ test_ipc_connection() {
     result=$(PYTHONPATH="$PROJECT_ROOT/nova-cortex" "$venv_python" -c "
 import json, socket
 sock_path = '$sock_path'
-# Wait for socket
-import time
-for _ in range(10):
-    try:
-        s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-        s.settimeout(1)
-        s.connect(str(sock_path))
-        break
-    except (FileNotFoundError, ConnectionRefusedError, OSError):
-        time.sleep(0.2)
-else:
-    print('SOCKET_TIMEOUT')
+try:
+    s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    s.settimeout(3)
+    s.connect(str(sock_path))
+except (FileNotFoundError, ConnectionRefusedError, OSError, socket.timeout) as e:
+    print(f'SOCKET_TIMEOUT:{e}')
     exit(1)
 msg = json.dumps({'tool': '$tool_name', 'arguments': {'path': '$arg'}})
 s.sendall((msg + '\n').encode('utf-8'))
