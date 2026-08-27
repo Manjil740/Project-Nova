@@ -1,0 +1,29 @@
+Metadata-Version: 2.4
+Name: nova-cortex
+Version: 0.1.0
+Summary: Project Nova Cortex core service
+Requires-Python: >=3.11
+Description-Content-Type: text/markdown
+Requires-Dist: requests>=2.31.0
+Requires-Dist: chromadb>=0.4.0
+Requires-Dist: scikit-learn>=1.0.0
+Requires-Dist: PySide6>=6.7.0
+Provides-Extra: voice
+Requires-Dist: openwakeword>=0.6.0; python_version < "3.13" and extra == "voice"
+
+# Nova Cortex
+
+Stage-one scaffold for the Nova Cortex runtime.
+
+## Layout
+
+- `nova/`: Python package for the Cortex core
+- `pyproject.toml`: Packaging and console entrypoint configuration
+
+## Run
+
+From this directory, run:
+
+```bash
+python3 -m nova.main
+```

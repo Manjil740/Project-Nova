@@ -1,0 +1,2 @@
+[console_scripts]
+nova-cli = nova.main:main

@@ -1,0 +1,84 @@
+from __future__ import annotations
+
+import asyncio
+from pathlib import Path
+
+from nova.core.config import NovaConfig
+from nova.core.state import CortexState
+from nova.core.platform import SystemProfile
+from nova.llm.engine import LLMEngine
+from nova.llm.client import LLMClient
+from nova.tools.registry import ToolRouter
+
+
+class IpcServer:
+    def __init__(
+        self,
+        socket_path: Path,
+        project_root: Path,
+        state: CortexState | None = None,
+        system_profile: SystemProfile | None = None,
+        config: NovaConfig | None = None,
+        llm_engine: LLMEngine | None = None,
+        llm_client: LLMClient | None = None,
+        router: ToolRouter | None = None,
+    ) -> None:
+        self.socket_path = socket_path
+        self._server: asyncio.AbstractServer | None = None
+        self._router = router or ToolRouter(
+            project_root=project_root,
+            state=state,
+            system_profile=system_profile,
+            config=config,
+            llm_engine=llm_engine,
+            llm_client=llm_client,
+        )
+
+    async def start(self) -> None:
+        if self.socket_path.exists():
+            self.socket_path.unlink()
+
+        self._server = await asyncio.start_unix_server(
+            self._handle_client,
+            path=str(self.socket_path),
+        )
+
+    async def stop(self) -> None:
+        if self._server is None:
+            return
+
+        self._server.close()
+        await self._server.wait_closed()
+        self._server = None
+
+        if self.socket_path.exists():
+            self.socket_path.unlink()
+
+    async def _handle_client(
+        self,
+        reader: asyncio.StreamReader,
+        writer: asyncio.StreamWriter,
+    ) -> None:
+        try:
+            payload = await reader.readline()
+        except (ConnectionResetError, BrokenPipeError, OSError):
+            return
+
+        message = payload.decode("utf-8", errors="replace").strip()
+        try:
+            response = self._router.dispatch(message)
+        except ValueError as error:
+            response = f"error:{error}\n"
+
+        try:
+            writer.write(response.encode("utf-8"))
+            await writer.drain()
+        except (ConnectionResetError, BrokenPipeError, OSError):
+            pass
+        finally:
+            try:
+                writer.close()
+                await writer.wait_closed()
+            except (ConnectionResetError, BrokenPipeError, OSError):
+                pass
+
