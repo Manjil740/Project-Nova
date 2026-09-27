@@ -261,7 +261,7 @@ python3 -m venv venv
 source venv/bin/activate
 pip3 install PySide6
 python3 installer.py
-```
+`````
 
 This opens a basic GUI selection screen for:
 
@@ -295,7 +295,7 @@ Then start the service:
 
 ```bash
 ollama serve
-```
+`````
 
 Pull a model(recommend):
 
